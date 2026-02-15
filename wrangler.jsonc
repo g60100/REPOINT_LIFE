@@ -1,15 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "repoint-life",
+  "main": "src/index.tsx",
   "compatibility_date": "2024-01-01",
-  "pages_build_output_dir": "./dist",
   "compatibility_flags": ["nodejs_compat"],
-  
+  "pages_build_output_dir": "./dist",
+
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "repoint-production",
-      "database_id": "placeholder-will-be-created"
+      "database_id": "4a26ee4e-4454-4871-9e08-5a838252a415"
     }
   ]
 }
