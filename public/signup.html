@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>회원가입 - REPOINT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8">
+            <!-- 로고 -->
+            <div class="text-center">
+                <a href="/">
+                    <h1 class="text-4xl font-bold text-blue-600">REPOINT</h1>
+                </a>
+                <p class="mt-2 text-gray-600">포인트로 되돌리는 생활</p>
+            </div>
+
+            <!-- 회원가입 폼 -->
+            <div class="bg-white rounded-xl shadow-lg p-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">회원가입</h2>
+                <p class="text-sm text-gray-600 mb-6">
+                    <i class="fas fa-gift text-yellow-500"></i>
+                    가입하시면 <span class="font-bold text-blue-600">1,000P</span>를 드려요!
+                </p>
+                
+                <form id="signup-form" class="space-y-4">
+                    <!-- 이름 -->
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
+                            이름
+                        </label>
+                        <input type="text" id="name" name="name" required
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="홍길동"/>
+                    </div>
+
+                    <!-- 이메일 -->
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
+                            이메일
+                        </label>
+                        <input type="email" id="email" name="email" required
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="email@example.com"/>
+                    </div>
+
+                    <!-- 전화번호 -->
+                    <div>
+                        <label for="phone" class="block text-sm font-medium text-gray-700 mb-2">
+                            전화번호
+                        </label>
+                        <input type="tel" id="phone" name="phone" required
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="010-1234-5678"/>
+                    </div>
+
+                    <!-- 비밀번호 -->
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                            비밀번호
+                        </label>
+                        <input type="password" id="password" name="password" required
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="비밀번호 (8자 이상)"/>
+                    </div>
+
+                    <!-- 비밀번호 확인 -->
+                    <div>
+                        <label for="confirm-password" class="block text-sm font-medium text-gray-700 mb-2">
+                            비밀번호 확인
+                        </label>
+                        <input type="password" id="confirm-password" name="confirm-password" required
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="비밀번호 확인"/>
+                    </div>
+
+                    <!-- 회원가입 버튼 -->
+                    <button type="submit" 
+                            class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold">
+                        회원가입
+                    </button>
+                </form>
+
+                <!-- 로그인 링크 -->
+                <div class="mt-6 text-center">
+                    <p class="text-gray-600">
+                        이미 계정이 있으신가요?
+                        <a href="/login.html" class="text-blue-600 hover:text-blue-800 font-semibold">
+                            로그인
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/static/app.js"></script>
+    <script src="/static/signup.js"></script>
+</body>
+</html>

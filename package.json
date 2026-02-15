@@ -1,0 +1,44 @@
+{
+  "name": "repoint-life",
+  "version": "1.0.0",
+  "description": "REPOINT - 포인트로 되돌리는 생활",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:sandbox": "wrangler pages dev dist --ip 0.0.0.0 --port 3000",
+    "dev:d1": "wrangler pages dev dist --d1=repoint-production --local --ip 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "wrangler pages dev dist",
+    "deploy": "npm run build && wrangler pages deploy dist",
+    "deploy:prod": "npm run build && wrangler pages deploy dist --project-name repoint-life",
+    "deploy:full": "bash deploy-all.sh",
+    "deploy:github": "bash quick-deploy.sh",
+    "setup:github": "bash setup-github-cloudflare.sh",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "clean-port": "fuser -k 3000/tcp 2>/dev/null || true",
+    "test": "curl http://localhost:3000",
+    "db:migrate:local": "wrangler d1 migrations apply repoint-production --local",
+    "db:migrate:prod": "wrangler d1 migrations apply repoint-production --remote",
+    "db:seed:local": "wrangler d1 execute repoint-production --local --file=./seed.sql && wrangler d1 execute repoint-production --local --file=./seed_extended.sql",
+    "db:seed:prod": "wrangler d1 execute repoint-production --remote --file=./seed.sql && wrangler d1 execute repoint-production --remote --file=./seed_extended.sql",
+    "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed:local",
+    "git:init": "git init && git add . && git commit -m 'Initial commit'",
+    "git:commit": "git add . && git commit -m",
+    "git:push": "git push -u origin main",
+    "git:status": "git status",
+    "git:log": "git log --oneline"
+  },
+  "dependencies": {
+    "hono": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20250705.0",
+    "@hono/vite-cloudflare-pages": "^0.4.2",
+    "vite": "^5.0.0",
+    "wrangler": "^3.78.0",
+    "typescript": "^5.0.0"
+  }
+}
