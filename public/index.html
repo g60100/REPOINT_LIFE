@@ -1,216 +1,402 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>REPOINT - 포인트로 되돌리는 생활</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-    <link href="/static/style.css" rel="stylesheet"/>
-    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>REPOINT - 쇼핑하면 돈 버는 앱</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    /* 헤더 */
+    header {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    }
+    
+    .logo {
+      font-size: 32px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+    }
+    
+    /* 히어로 섹션 */
+    .hero {
+      background: white;
+      padding: 60px 40px;
+      border-radius: 30px;
+      text-align: center;
+      margin-bottom: 30px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    }
+    
+    .hero h1 {
+      font-size: 48px;
+      font-weight: 900;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .hero p {
+      font-size: 24px;
+      color: #666;
+      margin-bottom: 40px;
+    }
+    
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 60px;
+      margin-bottom: 40px;
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 48px;
+      font-weight: 900;
+      color: #667eea;
+    }
+    
+    .stat-label {
+      font-size: 16px;
+      color: #999;
+      margin-top: 10px;
+    }
+    
+    .cta-button {
+      display: inline-block;
+      padding: 20px 60px;
+      font-size: 24px;
+      font-weight: 700;
+      color: white;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.3s, box-shadow 0.3s;
+      text-decoration: none;
+    }
+    
+    .cta-button:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 20px 40px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* 혜택 카드 */
+    .benefits {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      margin-bottom: 30px;
+    }
+    
+    .benefit-card {
+      background: white;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s;
+    }
+    
+    .benefit-card:hover {
+      transform: translateY(-10px);
+    }
+    
+    .benefit-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+    
+    .benefit-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 15px;
+      color: #667eea;
+    }
+    
+    .benefit-desc {
+      font-size: 16px;
+      color: #666;
+      line-height: 1.6;
+    }
+    
+    .benefit-amount {
+      font-size: 32px;
+      font-weight: 900;
+      color: #764ba2;
+      margin-top: 15px;
+    }
+    
+    /* 트렌드 섹션 */
+    .trends {
+      background: white;
+      padding: 40px;
+      border-radius: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+    
+    .section-title {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 30px;
+      color: #333;
+    }
+    
+    .trend-tabs {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 30px;
+      overflow-x: auto;
+    }
+    
+    .trend-tab {
+      padding: 12px 24px;
+      background: #f5f5f5;
+      border: none;
+      border-radius: 25px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+    
+    .trend-tab.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .trend-list {
+      display: grid;
+      gap: 15px;
+    }
+    
+    .trend-item {
+      display: flex;
+      align-items: center;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 15px;
+      transition: background 0.3s;
+    }
+    
+    .trend-item:hover {
+      background: #f0f0f0;
+    }
+    
+    .trend-rank {
+      font-size: 24px;
+      font-weight: 900;
+      color: #667eea;
+      margin-right: 20px;
+      min-width: 40px;
+    }
+    
+    .trend-content {
+      flex: 1;
+    }
+    
+    .trend-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    
+    .trend-meta {
+      font-size: 14px;
+      color: #999;
+    }
+    
+    /* 푸터 */
+    footer {
+      text-align: center;
+      padding: 40px;
+      color: white;
+    }
+    
+    footer a {
+      color: white;
+      text-decoration: none;
+      margin: 0 15px;
+    }
+  </style>
 </head>
-<body class="bg-gray-50">
-    <!-- Header -->
-    <header class="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg sticky top-0 z-50">
-        <div class="container mx-auto px-4">
-            <div class="flex items-center justify-between h-16">
-                <a href="/" class="flex items-center space-x-3">
-                    <h1 class="text-2xl font-bold">REPOINT</h1>
-                </a>
-                <nav class="hidden md:flex space-x-6">
-                    <a href="/" class="hover:text-blue-200 transition"><i class="fas fa-home mr-1"></i>홈</a>
-                    <a href="/shop.html" class="hover:text-blue-200 transition"><i class="fas fa-store mr-1"></i>온라인 쇼핑</a>
-                    <a href="/local.html" class="hover:text-blue-200 transition"><i class="fas fa-map-marker-alt mr-1"></i>주변 매장</a>
-                    <a href="/my.html" class="hover:text-blue-200 transition"><i class="fas fa-user mr-1"></i>마이페이지</a>
-                </nav>
-                <div class="flex items-center space-x-4">
-                    <a href="/cart.html" class="relative">
-                        <i class="fas fa-shopping-cart text-xl"></i>
-                        <span id="cart-count" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
-                    </a>
-                    <div id="user-info" class="hidden sm:flex items-center bg-white/20 rounded-full px-4 py-2">
-                        <i class="fas fa-coins text-yellow-300 mr-2"></i>
-                        <span id="user-points" class="font-bold">0P</span>
-                    </div>
-                    <a href="/login.html" id="login-btn" class="bg-white text-blue-600 px-4 py-2 rounded-full font-semibold hover:bg-blue-50 transition text-sm">로그인</a>
-                    <button id="logout-btn" class="hidden bg-red-500 px-4 py-2 rounded-full font-semibold hover:bg-red-600 transition text-sm">로그아웃</button>
-                </div>
-            </div>
-        </div>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">💰 REPOINT</div>
     </header>
-
-    <!-- Main Content -->
-    <main class="container mx-auto px-4 py-8">
-        <!-- Hero Section -->
-        <section class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl p-8 md:p-12 text-white mb-8">
-            <h1 class="text-3xl md:text-5xl font-bold mb-4">온라인부터 동네 카페까지<br/>모든 소비가 포인트로!</h1>
-            <p class="text-lg md:text-xl mb-6 opacity-90">가입만 해도 1,000P 적립! 친구 초대 시 최대 8,000P 추가!</p>
-            <div class="flex flex-wrap gap-4">
-                <a href="/signup.html" class="bg-white text-purple-600 px-8 py-4 rounded-full font-bold hover:bg-gray-100 transition">
-                    지금 가입하고 1,000P 받기
-                </a>
-                <a href="/local.html" class="bg-white/20 backdrop-blur px-8 py-4 rounded-full font-bold hover:bg-white/30 transition">
-                    주변 맛집 찾기
-                </a>
-            </div>
-        </section>
-
-        <!-- 통계 -->
-        <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white rounded-xl p-6 shadow-md text-center">
-                <i class="fas fa-users text-4xl text-blue-600 mb-3"></i>
-                <div class="text-3xl font-bold text-gray-800">1M+</div>
-                <div class="text-sm text-gray-600">전체 회원</div>
-            </div>
-            <div class="bg-white rounded-xl p-6 shadow-md text-center">
-                <i class="fas fa-store text-4xl text-green-600 mb-3"></i>
-                <div class="text-3xl font-bold text-gray-800">5,000+</div>
-                <div class="text-sm text-gray-600">제휴 매장</div>
-            </div>
-            <div class="bg-white rounded-xl p-6 shadow-md text-center">
-                <i class="fas fa-box text-4xl text-purple-600 mb-3"></i>
-                <div class="text-3xl font-bold text-gray-800">10K+</div>
-                <div class="text-sm text-gray-600">온라인 상품</div>
-            </div>
-            <div class="bg-white rounded-xl p-6 shadow-md text-center">
-                <i class="fas fa-coins text-4xl text-yellow-600 mb-3"></i>
-                <div class="text-3xl font-bold text-gray-800">$50M</div>
-                <div class="text-sm text-gray-600">누적 포인트</div>
-            </div>
-        </section>
-
-        <!-- 온라인 쇼핑 & 주변 매장 -->
-        <div class="grid md:grid-cols-2 gap-8 mb-8">
-            <!-- 온라인 쇼핑 -->
-            <section class="bg-white rounded-2xl p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-2xl font-bold text-gray-800">
-                        <i class="fas fa-store mr-2 text-blue-600"></i>온라인 쇼핑
-                    </h2>
-                    <a href="/shop.html" class="text-blue-600 hover:text-blue-800 font-semibold text-sm">
-                        전체보기 <i class="fas fa-arrow-right"></i>
-                    </a>
-                </div>
-                <div id="home-products" class="grid grid-cols-2 gap-4">
-                    <!-- 상품이 여기에 동적으로 로드됩니다 -->
-                </div>
-            </section>
-
-            <!-- 주변 매장 -->
-            <section class="bg-white rounded-2xl p-6 shadow-lg">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-2xl font-bold text-gray-800">
-                        <i class="fas fa-map-marker-alt mr-2 text-red-600"></i>주변 매장
-                    </h2>
-                    <a href="/local.html" class="text-red-600 hover:text-red-800 font-semibold text-sm">
-                        지도보기 <i class="fas fa-arrow-right"></i>
-                    </a>
-                </div>
-                <div id="home-stores" class="space-y-4">
-                    <!-- 매장이 여기에 동적으로 로드됩니다 -->
-                </div>
-            </section>
+    
+    <div class="hero">
+      <h1>쇼핑하면 돈 버는 앱</h1>
+      <p>쿠팡은 0원, REPOINT는 15% 캐시백!</p>
+      
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-number">100만+</div>
+          <div class="stat-label">회원</div>
         </div>
-
-        <!-- 혜택 섹션 -->
-        <section class="bg-white rounded-2xl p-8 shadow-lg">
-            <h2 class="text-3xl font-bold text-center text-gray-800 mb-10">REPOINT만의 특별한 혜택</h2>
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="text-center">
-                    <div class="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-gift text-4xl text-blue-600"></i>
-                    </div>
-                    <h3 class="font-bold text-xl text-gray-800 mb-3">가입 즉시 1,000P</h3>
-                    <p class="text-gray-600">회원가입만 해도 즉시 1,000포인트 적립! 추가 인증 시 최대 4,500P</p>
-                </div>
-                <div class="text-center">
-                    <div class="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-users text-4xl text-green-600"></i>
-                    </div>
-                    <h3 class="font-bold text-xl text-gray-800 mb-3">친구 초대 보상</h3>
-                    <p class="text-gray-600">친구 1명당 최대 8,000P! 양방향 보너스로 친구도 혜택</p>
-                </div>
-                <div class="text-center">
-                    <div class="bg-purple-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-infinity text-4xl text-purple-600"></i>
-                    </div>
-                    <h3 class="font-bold text-xl text-gray-800 mb-3">무제한 포인트 사용</h3>
-                    <p class="text-gray-600">온라인 쇼핑 100% 포인트 결제, 오프라인 최대 50% 사용 가능</p>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-8 mt-12">
-        <div class="container mx-auto px-4 text-center">
-            <p>© 2024 REPOINT. All rights reserved.</p>
+        <div class="stat">
+          <div class="stat-number">30만+</div>
+          <div class="stat-label">가맹점</div>
         </div>
+        <div class="stat">
+          <div class="stat-number">15%</div>
+          <div class="stat-label">캐시백</div>
+        </div>
+      </div>
+      
+      <a href="#signup" class="cta-button">지금 가입하고 1만원 받기 🎁</a>
+    </div>
+    
+    <div class="benefits">
+      <div class="benefit-card">
+        <div class="benefit-icon">🎁</div>
+        <div class="benefit-title">가입 즉시</div>
+        <div class="benefit-desc">회원가입만 해도 바로 지급!</div>
+        <div class="benefit-amount">10,000P</div>
+      </div>
+      
+      <div class="benefit-card">
+        <div class="benefit-icon">💸</div>
+        <div class="benefit-title">첫 구매</div>
+        <div class="benefit-desc">첫 구매 시 최대 캐시백!</div>
+        <div class="benefit-amount">50% 캐시백</div>
+      </div>
+      
+      <div class="benefit-card">
+        <div class="benefit-icon">👥</div>
+        <div class="benefit-title">친구 초대</div>
+        <div class="benefit-desc">친구 1명당 포인트 지급!</div>
+        <div class="benefit-amount">5,000P</div>
+      </div>
+      
+      <div class="benefit-card">
+        <div class="benefit-icon">🛍️</div>
+        <div class="benefit-title">모든 구매</div>
+        <div class="benefit-desc">쇼핑할 때마다 캐시백!</div>
+        <div class="benefit-amount">5-15%</div>
+      </div>
+      
+      <div class="benefit-card">
+        <div class="benefit-icon">📍</div>
+        <div class="benefit-title">체크인</div>
+        <div class="benefit-desc">가맹점 방문 시 적립!</div>
+        <div class="benefit-amount">100P</div>
+      </div>
+      
+      <div class="benefit-card">
+        <div class="benefit-icon">📅</div>
+        <div class="benefit-title">출석 체크</div>
+        <div class="benefit-desc">매일 출석하면 보너스!</div>
+        <div class="benefit-amount">100P</div>
+      </div>
+    </div>
+    
+    <div class="trends">
+      <h2 class="section-title">🔥 실시간 트렌드</h2>
+      
+      <div class="trend-tabs">
+        <button class="trend-tab active">YouTube</button>
+        <button class="trend-tab">TikTok</button>
+        <button class="trend-tab">Instagram</button>
+        <button class="trend-tab">네이버</button>
+        <button class="trend-tab">쇼핑</button>
+      </div>
+      
+      <div class="trend-list">
+        <div class="trend-item">
+          <div class="trend-rank">1</div>
+          <div class="trend-content">
+            <div class="trend-title">요즘 핫한 카페 TOP 10</div>
+            <div class="trend-meta">조회수 150만 · 먹방유튜버</div>
+          </div>
+        </div>
+        
+        <div class="trend-item">
+          <div class="trend-rank">2</div>
+          <div class="trend-content">
+            <div class="trend-title">이 앱으로 돈 버는 법</div>
+            <div class="trend-meta">조회수 120만 · 재테크TV</div>
+          </div>
+        </div>
+        
+        <div class="trend-item">
+          <div class="trend-rank">3</div>
+          <div class="trend-content">
+            <div class="trend-title">강남 핫플 투어</div>
+            <div class="trend-meta">조회수 100만 · 여행러버</div>
+          </div>
+        </div>
+        
+        <div class="trend-item">
+          <div class="trend-rank">4</div>
+          <div class="trend-content">
+            <div class="trend-title">쇼핑 캐시백 받는 법</div>
+            <div class="trend-meta">조회수 80만 · 알뜰쇼핑</div>
+          </div>
+        </div>
+        
+        <div class="trend-item">
+          <div class="trend-rank">5</div>
+          <div class="trend-content">
+            <div class="trend-title">REPOINT 사용법</div>
+            <div class="trend-meta">조회수 50만 · IT리뷰</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <footer>
+      <p>&copy; 2026 REPOINT. All rights reserved.</p>
+      <div>
+        <a href="#about">회사소개</a>
+        <a href="#terms">이용약관</a>
+        <a href="#privacy">개인정보처리방침</a>
+        <a href="#contact">고객센터</a>
+      </div>
     </footer>
-
-    <!-- JavaScript -->
-    <script src="/static/app.js"></script>
-    <script>
-        // 홈페이지 초기화
-        document.addEventListener('DOMContentLoaded', async function() {
-            console.log('홈페이지 로드됨');
-            
-            try {
-                // 상품 4개 미리보기 로드
-                const products = await window.app.api.getProducts();
-                const homeProducts = document.getElementById('home-products');
-                if (products && products.length > 0) {
-                    homeProducts.innerHTML = products.slice(0, 4).map(product => `
-                        <a href="/shop.html?id=${product.id}" class="group">
-                            <div class="bg-gray-100 rounded-lg overflow-hidden mb-2">
-                                <img src="${product.image_url}" alt="${product.name}" 
-                                     class="w-full h-32 object-cover group-hover:scale-105 transition"/>
-                            </div>
-                            <h3 class="font-semibold text-sm text-gray-800 mb-1 line-clamp-2 group-hover:text-blue-600">
-                                ${product.name}
-                            </h3>
-                            <div class="flex items-center justify-between">
-                                <span class="text-blue-600 font-bold">${product.price.toLocaleString()}원</span>
-                                <span class="text-xs text-yellow-600">+${Math.floor(product.price * product.points_rate / 100)}P</span>
-                            </div>
-                        </a>
-                    `).join('');
-                }
-                
-                // 매장 3개 미리보기 로드
-                const stores = await window.app.api.getStores();
-                const homeStores = document.getElementById('home-stores');
-                if (stores && stores.length > 0) {
-                    homeStores.innerHTML = stores.slice(0, 3).map(store => `
-                        <a href="/local.html?id=${store.id}" class="flex items-start p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
-                            <img src="${store.image_url}" alt="${store.name}" 
-                                 class="w-20 h-20 rounded-lg mr-4 object-cover"/>
-                            <div class="flex-1">
-                                <div class="flex items-center space-x-2 mb-1">
-                                    <h3 class="font-bold text-gray-800">${store.name}</h3>
-                                    <span class="text-white text-xs px-2 py-0.5 rounded ${
-                                        store.tier === 'Diamond' ? 'bg-yellow-500' :
-                                        store.tier === 'Platinum' ? 'bg-purple-500' :
-                                        store.tier === 'Gold' ? 'bg-orange-500' : 'bg-gray-500'
-                                    }">${store.tier}</span>
-                                </div>
-                                <div class="flex items-center text-yellow-500 text-sm mb-1">
-                                    <i class="fas fa-star"></i>
-                                    <span class="ml-1 font-semibold">${store.rating}</span>
-                                    <span class="text-gray-500 ml-1">(${store.reviews_count} 리뷰)</span>
-                                </div>
-                                <p class="text-sm text-gray-600">
-                                    <i class="fas fa-map-marker-alt text-red-500 mr-1"></i>
-                                    ${store.distance} · ${store.discount_rate}% 할인 + ${store.points_rate}% 포인트
-                                </p>
-                            </div>
-                        </a>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error('홈페이지 데이터 로드 실패:', error);
-            }
-        });
-    </script>
+  </div>
+  
+  <script>
+    // 트렌드 탭 전환
+    const tabs = document.querySelectorAll('.trend-tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        // 실제로는 API 호출하여 데이터 업데이트
+      });
+    });
+  </script>
 </body>
 </html>
