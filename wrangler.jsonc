@@ -4,6 +4,10 @@
   "compatibility_date": "2024-01-01",
   "pages_build_output_dir": "dist",
   
+  "vars": {
+    "JWT_SECRET": "repoint-production-secret-2024-CHANGE-THIS-TO-RANDOM-STRING"
+  },
+  
   "d1_databases": [
     {
       "binding": "DB",

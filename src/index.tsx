@@ -15,32 +15,99 @@ type User = {
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// JWT Secret (production에서는 environment variable로 관리)
-const JWT_SECRET = 'repoint-secret-key-2024'
+// JWT Secret (?�경 변?�에??가?�오�?
+const getJWTSecret = (c: any) => c.env.getJWTSecret(c) || 'dev-secret-only-change-in-production'
 
-// 비밀번호 해싱 함수 (Web Crypto API 사용)
+// PBKDF2 비�?번호 ?�싱 ?�수 (salt ?�함)
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hash = await crypto.subtle.digest('SHA-256', data)
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const passwordData = encoder.encode(password)
+
+  const key = await crypto.subtle.importKey(
+    'raw', passwordData, 'PBKDF2', false, ['deriveBits']
+  )
+
+  const hash = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    key, 256
+  )
+
   const hashArray = Array.from(new Uint8Array(hash))
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-  return hashHex
+  const saltArray = Array.from(salt)
+  const combined = saltArray.concat(hashArray)
+  return combined.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-// 비밀번호 검증 함수
+// 비�?번호 검�??�수
 async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  const hash = await hashPassword(password)
-  return hash === hashedPassword
+  const encoder = new TextEncoder()
+  const combined = hashedPassword.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+  const salt = new Uint8Array(combined.slice(0, 16))
+  const storedHash = combined.slice(16)
+
+  const passwordData = encoder.encode(password)
+  const key = await crypto.subtle.importKey(
+    'raw', passwordData, 'PBKDF2', false, ['deriveBits']
+  )
+
+  const hash = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    key, 256
+  )
+
+  const hashArray = Array.from(new Uint8Array(hash))
+  return hashArray.every((byte, i) => byte === storedHash[i])
 }
 
-// CORS 설정
-app.use('/api/*', cors())
+// Haversine 공식?�로 거리 계산 (km)
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371 // 지�?반�?�?(km)
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+// 관리자 권한 체크 미들?�어
+async function requireAdmin(c: any, next: any) {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: '?�증???�요?�니?? }, 401)
+  }
+
+  const token = authHeader.substring(7)
+  try {
+    const payload = await verify(token, getJWTSecret(c)) as any as any
+
+    const { DB } = c.env
+    const user = await DB.prepare('SELECT role FROM users WHERE id = ?')
+      .bind(payload.id).first() as any
+
+    if (!user || user.role !== 'admin') {
+      return c.json({ error: '관리자 권한???�요?�니?? }, 403)
+    }
+
+    await next()
+  } catch (error) {
+    return c.json({ error: '?�증 ?�패' }, 401)
+  }
+}
+
+// CORS ?�정 (?�정 ?�메?�만 ?�용)
+app.use('/api/*', cors({
+  origin: ['https://repoint.life', 'https://repoint-life.pages.dev', 'http://localhost:3000'],
+  credentials: true
+}))
+
 
 // ==================== Authentication APIs ====================
 
-// 회원가입
-app.post('/api/auth/signup', async (c) => {
+// ?�원가??app.post('/api/auth/signup', async (c) => {
   try {
     const { DB } = c.env
     const { email, password, name, phone } = await c.req.json()
@@ -51,26 +118,26 @@ app.post('/api/auth/signup', async (c) => {
     ).bind(email).first()
 
     if (existing) {
-      return c.json({ error: '이미 존재하는 이메일입니다' }, 400)
+      return c.json({ error: '?��? 존재?�는 ?�메?�입?�다' }, 400)
     }
 
-    // 비밀번호 해싱
+    // 비�?번호 ?�싱
     const hashedPassword = await hashPassword(password)
 
-    // 사용자 생성
+    // ?�용???�성
     const result = await DB.prepare(
       'INSERT INTO users (email, password, name, phone, points) VALUES (?, ?, ?, ?, ?)'
     ).bind(email, hashedPassword, name, phone, 1000).run()
 
-    // 가입 포인트 지급 기록
+    // 가???�인??지�?기록
     await DB.prepare(
       'INSERT INTO points_history (user_id, amount, type, description) VALUES (?, ?, ?, ?)'
-    ).bind(result.meta.last_row_id, 1000, 'signup', '회원가입 축하 포인트').run()
+    ).bind(result.meta.last_row_id, 1000, 'signup', '?�원가??축하 ?�인??).run()
 
-    // JWT 생성
+    // JWT ?�성
     const token = await sign(
       { id: result.meta.last_row_id, email, name },
-      JWT_SECRET
+      getJWTSecret(c)
     )
 
     return c.json({
@@ -83,12 +150,11 @@ app.post('/api/auth/signup', async (c) => {
       }
     })
   } catch (error) {
-    return c.json({ error: '회원가입 실패' }, 500)
+    return c.json({ error: '?�원가???�패' }, 500)
   }
 })
 
-// 로그인
-app.post('/api/auth/login', async (c) => {
+// 로그??app.post('/api/auth/login', async (c) => {
   try {
     const { DB } = c.env
     const { email, password } = await c.req.json()
@@ -98,24 +164,23 @@ app.post('/api/auth/login', async (c) => {
     ).bind(email).first() as any
 
     if (!user) {
-      return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401)
+      return c.json({ error: '?�메???�는 비�?번호가 ?�바르�? ?�습?�다' }, 401)
     }
 
-    // 비밀번호 검증
-    const isValid = await verifyPassword(password, user.password)
+    // 비�?번호 검�?    const isValid = await verifyPassword(password, user.password)
     if (!isValid) {
-      return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401)
+      return c.json({ error: '?�메???�는 비�?번호가 ?�바르�? ?�습?�다' }, 401)
     }
 
-    // JWT 생성 (1일 유효)
+    // JWT ?�성 (1???�효)
     const token = await sign(
-      { 
-        id: user.id, 
-        email: user.email, 
+      {
+        id: user.id,
+        email: user.email,
         name: user.name,
-        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // 24시간
+        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // 24?�간
       },
-      JWT_SECRET
+      getJWTSecret(c)
     )
 
     return c.json({
@@ -128,20 +193,20 @@ app.post('/api/auth/login', async (c) => {
       }
     })
   } catch (error) {
-    return c.json({ error: '로그인 실패' }, 500)
+    return c.json({ error: '로그???�패' }, 500)
   }
 })
 
-// 현재 사용자 정보
+// ?�재 ?�용???�보
 app.get('/api/auth/me', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const user = await DB.prepare(
@@ -149,31 +214,30 @@ app.get('/api/auth/me', async (c) => {
     ).bind(payload.id).first() as any
 
     if (!user) {
-      return c.json({ error: '사용자를 찾을 수 없습니다' }, 404)
+      return c.json({ error: '?�용?��? 찾을 ???�습?�다' }, 404)
     }
 
     return c.json({ user })
   } catch (error) {
-    return c.json({ error: '인증 실패' }, 401)
+    return c.json({ error: '?�증 ?�패' }, 401)
   }
 })
 
-// 프로필 업데이트
+// ?�로???�데?�트
 app.patch('/api/auth/me', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { name, phone, password } = await c.req.json()
 
-    // 업데이트할 필드 준비
-    const updates: string[] = []
+    // ?�데?�트???�드 준�?    const updates: string[] = []
     const values: any[] = []
 
     if (name) {
@@ -191,31 +255,31 @@ app.patch('/api/auth/me', async (c) => {
     }
 
     if (updates.length === 0) {
-      return c.json({ error: '업데이트할 정보가 없습니다' }, 400)
+      return c.json({ error: '?�데?�트???�보가 ?�습?�다' }, 400)
     }
 
-    // 사용자 ID 추가
+    // ?�용??ID 추�?
     values.push(payload.id)
 
-    // SQL 쿼리 실행
+    // SQL 쿼리 ?�행
     await DB.prepare(
       `UPDATE users SET ${updates.join(', ')} WHERE id = ?`
     ).bind(...values).run()
 
-    // 업데이트된 사용자 정보 반환
+    // ?�데?�트???�용???�보 반환
     const user = await DB.prepare(
       'SELECT id, email, name, phone, points FROM users WHERE id = ?'
     ).bind(payload.id).first() as any
 
-    return c.json({ message: '프로필이 업데이트되었습니다', user })
+    return c.json({ message: '?�로?�이 ?�데?�트?�었?�니??, user })
   } catch (error) {
-    return c.json({ error: '프로필 업데이트 실패' }, 500)
+    return c.json({ error: '?�로???�데?�트 ?�패' }, 500)
   }
 })
 
 // ==================== Product APIs ====================
 
-// 상품 목록 (검색, 필터 지원)
+// ?�품 목록 (검?? ?�터 지??
 app.get('/api/products', async (c) => {
   try {
     const { DB } = c.env
@@ -247,11 +311,11 @@ app.get('/api/products', async (c) => {
 
     return c.json({ products: results })
   } catch (error) {
-    return c.json({ error: '상품 목록 조회 실패' }, 500)
+    return c.json({ error: '?�품 목록 조회 ?�패' }, 500)
   }
 })
 
-// 상품 상세 (옵션, 이미지, 리뷰 포함)
+// ?�품 ?�세 (?�션, ?��?지, 리뷰 ?�함)
 app.get('/api/products/:id', async (c) => {
   try {
     const { DB } = c.env
@@ -262,20 +326,20 @@ app.get('/api/products/:id', async (c) => {
     ).bind(id).first()
 
     if (!product) {
-      return c.json({ error: '상품을 찾을 수 없습니다' }, 404)
+      return c.json({ error: '?�품??찾을 ???�습?�다' }, 404)
     }
 
-    // 옵션 조회
+    // ?�션 조회
     const { results: options } = await DB.prepare(
       'SELECT * FROM product_options WHERE product_id = ?'
     ).bind(id).all()
 
-    // 이미지 조회
+    // ?��?지 조회
     const { results: images } = await DB.prepare(
       'SELECT * FROM product_images WHERE product_id = ? ORDER BY display_order ASC'
     ).bind(id).all()
 
-    // 리뷰 통계
+    // 리뷰 ?�계
     const reviewStats = await DB.prepare(`
       SELECT 
         COUNT(*) as review_count,
@@ -283,7 +347,7 @@ app.get('/api/products/:id', async (c) => {
       FROM reviews WHERE product_id = ?
     `).bind(id).first() as any
 
-    return c.json({ 
+    return c.json({
       product,
       options,
       images,
@@ -291,7 +355,7 @@ app.get('/api/products/:id', async (c) => {
       average_rating: reviewStats?.average_rating || 0
     })
   } catch (error) {
-    return c.json({ error: '상품 조회 실패' }, 500)
+    return c.json({ error: '?�품 조회 ?�패' }, 500)
   }
 })
 
@@ -307,11 +371,11 @@ app.get('/api/stores', async (c) => {
 
     return c.json({ stores: results })
   } catch (error) {
-    return c.json({ error: '매장 목록 조회 실패' }, 500)
+    return c.json({ error: '매장 목록 조회 ?�패' }, 500)
   }
 })
 
-// 매장 상세
+// 매장 ?�세
 app.get('/api/stores/:id', async (c) => {
   try {
     const { DB } = c.env
@@ -322,27 +386,27 @@ app.get('/api/stores/:id', async (c) => {
     ).bind(id).first()
 
     if (!store) {
-      return c.json({ error: '매장을 찾을 수 없습니다' }, 404)
+      return c.json({ error: '매장??찾을 ???�습?�다' }, 404)
     }
 
     return c.json({ store })
   } catch (error) {
-    return c.json({ error: '매장 조회 실패' }, 500)
+    return c.json({ error: '매장 조회 ?�패' }, 500)
   }
 })
 
 // ==================== Cart APIs ====================
 
-// 장바구니 조회
+// ?�바구니 조회
 app.get('/api/cart', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { results } = await DB.prepare(`
@@ -354,86 +418,86 @@ app.get('/api/cart', async (c) => {
 
     return c.json({ items: results })
   } catch (error) {
-    return c.json({ error: '장바구니 조회 실패' }, 500)
+    return c.json({ error: '?�바구니 조회 ?�패' }, 500)
   }
 })
 
-// 장바구니 추가
+// ?�바구니 추�?
 app.post('/api/cart', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { product_id, quantity } = await c.req.json()
 
-    // 이미 있는지 확인
+    // ?��? ?�는지 ?�인
     const existing = await DB.prepare(
       'SELECT id, quantity FROM cart WHERE user_id = ? AND product_id = ?'
     ).bind(payload.id, product_id).first() as any
 
     if (existing) {
-      // 수량 업데이트
+      // ?�량 ?�데?�트
       await DB.prepare(
         'UPDATE cart SET quantity = quantity + ? WHERE id = ?'
       ).bind(quantity || 1, existing.id).run()
     } else {
-      // 새로 추가
+      // ?�로 추�?
       await DB.prepare(
         'INSERT INTO cart (user_id, product_id, quantity) VALUES (?, ?, ?)'
       ).bind(payload.id, product_id, quantity || 1).run()
     }
 
-    return c.json({ message: '장바구니에 추가되었습니다' })
+    return c.json({ message: '?�바구니??추�??�었?�니?? })
   } catch (error) {
-    return c.json({ error: '장바구니 추가 실패' }, 500)
+    return c.json({ error: '?�바구니 추�? ?�패' }, 500)
   }
 })
 
-// 장바구니 수량 업데이트
+// ?�바구니 ?�량 ?�데?�트
 app.patch('/api/cart/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const id = c.req.param('id')
     const { quantity } = await c.req.json()
 
     if (quantity < 1) {
-      return c.json({ error: '수량은 1개 이상이어야 합니다' }, 400)
+      return c.json({ error: '?�량?� 1�??�상?�어???�니?? }, 400)
     }
 
     await DB.prepare(
       'UPDATE cart SET quantity = ? WHERE id = ? AND user_id = ?'
     ).bind(quantity, id, payload.id).run()
 
-    return c.json({ message: '수량이 변경되었습니다' })
+    return c.json({ message: '?�량??변경되?�습?�다' })
   } catch (error) {
-    return c.json({ error: '수량 변경 실패' }, 500)
+    return c.json({ error: '?�량 변�??�패' }, 500)
   }
 })
 
-// 장바구니 삭제
+// ?�바구니 ??��
 app.delete('/api/cart/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const id = c.req.param('id')
@@ -442,30 +506,29 @@ app.delete('/api/cart/:id', async (c) => {
       'DELETE FROM cart WHERE id = ? AND user_id = ?'
     ).bind(id, payload.id).run()
 
-    return c.json({ message: '장바구니에서 삭제되었습니다' })
+    return c.json({ message: '?�바구니?�서 ??��?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '장바구니 삭제 실패' }, 500)
+    return c.json({ error: '?�바구니 ??�� ?�패' }, 500)
   }
 })
 
 // ==================== Order APIs ====================
 
-// 주문 생성
+// 주문 ?�성
 app.post('/api/orders', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { product_id, store_id, order_type, points_used } = await c.req.json()
 
-    // 상품 정보 가져오기
-    let total_price = 0
+    // ?�품 ?�보 가?�오�?    let total_price = 0
     let points_earned = 0
 
     if (product_id) {
@@ -477,7 +540,7 @@ app.post('/api/orders', async (c) => {
       points_earned = Math.floor(product.price * product.points_rate / 100)
     }
 
-    // 포인트 차감
+    // ?�인??차감
     if (points_used > 0) {
       await DB.prepare(
         'UPDATE users SET points = points - ? WHERE id = ?'
@@ -485,25 +548,25 @@ app.post('/api/orders', async (c) => {
 
       await DB.prepare(
         'INSERT INTO points_history (user_id, amount, type, description) VALUES (?, ?, ?, ?)'
-      ).bind(payload.id, -points_used, 'use', '주문 시 포인트 사용').run()
+      ).bind(payload.id, -points_used, 'use', '주문 ???�인???�용').run()
     }
 
-    // 주문 생성
+    // 주문 ?�성
     const result = await DB.prepare(`
       INSERT INTO orders (user_id, product_id, store_id, order_type, total_price, points_used, points_earned, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(payload.id, product_id || null, store_id || null, order_type, total_price, points_used || 0, points_earned, 'completed').run()
 
-    // 포인트 적립
+    // ?�인???�립
     await DB.prepare(
       'UPDATE users SET points = points + ? WHERE id = ?'
     ).bind(points_earned, payload.id).run()
 
     await DB.prepare(
       'INSERT INTO points_history (user_id, amount, type, description) VALUES (?, ?, ?, ?)'
-    ).bind(payload.id, points_earned, 'purchase', '상품 구매 적립').run()
+    ).bind(payload.id, points_earned, 'purchase', '?�품 구매 ?�립').run()
 
-    // 장바구니 비우기 (product_id가 있는 경우)
+    // ?�바구니 비우�?(product_id가 ?�는 경우)
     if (product_id) {
       await DB.prepare(
         'DELETE FROM cart WHERE user_id = ? AND product_id = ?'
@@ -512,11 +575,11 @@ app.post('/api/orders', async (c) => {
 
     return c.json({
       order_id: result.meta.last_row_id,
-      message: '주문이 완료되었습니다',
+      message: '주문???�료?�었?�니??,
       points_earned
     })
   } catch (error) {
-    return c.json({ error: '주문 처리 실패' }, 500)
+    return c.json({ error: '주문 처리 ?�패' }, 500)
   }
 })
 
@@ -525,11 +588,11 @@ app.get('/api/orders', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { results } = await DB.prepare(`
@@ -542,22 +605,22 @@ app.get('/api/orders', async (c) => {
 
     return c.json({ orders: results })
   } catch (error) {
-    return c.json({ error: '주문 목록 조회 실패' }, 500)
+    return c.json({ error: '주문 목록 조회 ?�패' }, 500)
   }
 })
 
 // ==================== Points APIs ====================
 
-// 포인트 내역
+// ?�인???�역
 app.get('/api/points/history', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { results } = await DB.prepare(
@@ -566,7 +629,7 @@ app.get('/api/points/history', async (c) => {
 
     return c.json({ history: results })
   } catch (error) {
-    return c.json({ error: '포인트 내역 조회 실패' }, 500)
+    return c.json({ error: '?�인???�역 조회 ?�패' }, 500)
   }
 })
 
@@ -583,7 +646,7 @@ app.get('/api/stats', (c) => {
 
 // ==================== Reviews APIs ====================
 
-// 상품 리뷰 목록 조회
+// ?�품 리뷰 목록 조회
 app.get('/api/products/:id/reviews', async (c) => {
   try {
     const { DB } = c.env
@@ -600,31 +663,31 @@ app.get('/api/products/:id/reviews', async (c) => {
 
     return c.json({ reviews: results })
   } catch (error) {
-    return c.json({ error: '리뷰 조회 실패' }, 500)
+    return c.json({ error: '리뷰 조회 ?�패' }, 500)
   }
 })
 
-// 리뷰 작성
+// 리뷰 ?�성
 app.post('/api/reviews', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { product_id, order_id, rating, title, content, images } = await c.req.json()
 
-    // 리뷰 생성
+    // 리뷰 ?�성
     const result = await DB.prepare(`
       INSERT INTO reviews (user_id, product_id, order_id, rating, title, content)
       VALUES (?, ?, ?, ?, ?, ?)
     `).bind(payload.id, product_id, order_id || null, rating, title, content).run()
 
-    // 이미지가 있으면 추가
+    // ?��?지가 ?�으�?추�?
     if (images && images.length > 0) {
       for (const imageUrl of images) {
         await DB.prepare(`
@@ -633,25 +696,25 @@ app.post('/api/reviews', async (c) => {
       }
     }
 
-    return c.json({ 
-      message: '리뷰가 등록되었습니다',
+    return c.json({
+      message: '리뷰가 ?�록?�었?�니??,
       review_id: result.meta.last_row_id
     })
   } catch (error) {
-    return c.json({ error: '리뷰 작성 실패' }, 500)
+    return c.json({ error: '리뷰 ?�성 ?�패' }, 500)
   }
 })
 
-// 리뷰 수정
+// 리뷰 ?�정
 app.patch('/api/reviews/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const reviewId = c.req.param('id')
@@ -662,22 +725,22 @@ app.patch('/api/reviews/:id', async (c) => {
       WHERE id = ? AND user_id = ?
     `).bind(rating, title, content, reviewId, payload.id).run()
 
-    return c.json({ message: '리뷰가 수정되었습니다' })
+    return c.json({ message: '리뷰가 ?�정?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '리뷰 수정 실패' }, 500)
+    return c.json({ error: '리뷰 ?�정 ?�패' }, 500)
   }
 })
 
-// 리뷰 삭제
+// 리뷰 ??��
 app.delete('/api/reviews/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const reviewId = c.req.param('id')
@@ -685,15 +748,15 @@ app.delete('/api/reviews/:id', async (c) => {
     await DB.prepare('DELETE FROM reviews WHERE id = ? AND user_id = ?')
       .bind(reviewId, payload.id).run()
 
-    return c.json({ message: '리뷰가 삭제되었습니다' })
+    return c.json({ message: '리뷰가 ??��?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '리뷰 삭제 실패' }, 500)
+    return c.json({ error: '리뷰 ??�� ?�패' }, 500)
   }
 })
 
 // ==================== Product Options APIs ====================
 
-// 상품 옵션 조회
+// ?�품 ?�션 조회
 app.get('/api/products/:id/options', async (c) => {
   try {
     const { DB } = c.env
@@ -705,13 +768,13 @@ app.get('/api/products/:id/options', async (c) => {
 
     return c.json({ options: results })
   } catch (error) {
-    return c.json({ error: '옵션 조회 실패' }, 500)
+    return c.json({ error: '?�션 조회 ?�패' }, 500)
   }
 })
 
 // ==================== Product Images APIs ====================
 
-// 상품 이미지 조회
+// ?�품 ?��?지 조회
 app.get('/api/products/:id/images', async (c) => {
   try {
     const { DB } = c.env
@@ -723,27 +786,27 @@ app.get('/api/products/:id/images', async (c) => {
 
     return c.json({ images: results })
   } catch (error) {
-    return c.json({ error: '이미지 조회 실패' }, 500)
+    return c.json({ error: '?��?지 조회 ?�패' }, 500)
   }
 })
 
 // ==================== Referral APIs ====================
 
-// 추천인 코드 생성 (자동)
+// 추천??코드 ?�성 (?�동)
 async function generateReferralCode(userId: number): Promise<string> {
   return `REF${userId}${Date.now().toString(36).toUpperCase()}`
 }
 
-// 내 추천인 코드 조회
+// ??추천??코드 조회
 app.get('/api/referral/code', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const user = await DB.prepare(
@@ -752,7 +815,7 @@ app.get('/api/referral/code', async (c) => {
 
     let referralCode = user.referral_code
 
-    // 코드가 없으면 생성
+    // 코드가 ?�으�??�성
     if (!referralCode) {
       referralCode = await generateReferralCode(payload.id)
       await DB.prepare(
@@ -762,69 +825,66 @@ app.get('/api/referral/code', async (c) => {
 
     return c.json({ referral_code: referralCode })
   } catch (error) {
-    return c.json({ error: '추천인 코드 조회 실패' }, 500)
+    return c.json({ error: '추천??코드 조회 ?�패' }, 500)
   }
 })
 
-// 추천인 코드로 가입
-app.post('/api/referral/apply', async (c) => {
+// 추천??코드�?가??app.post('/api/referral/apply', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { referral_code } = await c.req.json()
 
-    // 추천인 찾기
+    // 추천??찾기
     const referrer = await DB.prepare(
       'SELECT id FROM users WHERE referral_code = ?'
     ).bind(referral_code).first() as any
 
     if (!referrer) {
-      return c.json({ error: '올바르지 않은 추천인 코드입니다' }, 404)
+      return c.json({ error: '?�바르�? ?��? 추천??코드?�니?? }, 404)
     }
 
     if (referrer.id === payload.id) {
-      return c.json({ error: '자신의 추천인 코드는 사용할 수 없습니다' }, 400)
+      return c.json({ error: '?�신??추천??코드???�용?????�습?�다' }, 400)
     }
 
-    // 이미 추천인이 있는지 확인
+    // ?��? 추천?�이 ?�는지 ?�인
     const existing = await DB.prepare(
       'SELECT id FROM users WHERE id = ? AND referred_by IS NOT NULL'
     ).bind(payload.id).first()
 
     if (existing) {
-      return c.json({ error: '이미 추천인이 등록되어 있습니다' }, 400)
+      return c.json({ error: '?��? 추천?�이 ?�록?�어 ?�습?�다' }, 400)
     }
 
-    // 추천인 등록
+    // 추천???�록
     await DB.prepare(
       'UPDATE users SET referred_by = ? WHERE id = ?'
     ).bind(referrer.id, payload.id).run()
 
-    // 추천인에게 보너스 지급
-    const bonusPoints = 1000
+    // 추천?�에�?보너??지�?    const bonusPoints = 1000
     await DB.prepare(
       'UPDATE users SET points = points + ? WHERE id = ?'
     ).bind(bonusPoints, referrer.id).run()
 
     await DB.prepare(
       'INSERT INTO points_history (user_id, amount, type, description) VALUES (?, ?, ?, ?)'
-    ).bind(referrer.id, bonusPoints, 'referral', '친구 초대 보너스').run()
+    ).bind(referrer.id, bonusPoints, 'referral', '친구 초�? 보너??).run()
 
-    // 피추천인에게도 보너스 지급
-    await DB.prepare(
+    // ?�추천인?�게??보너??지�?    await DB.prepare(
       'UPDATE users SET points = points + ? WHERE id = ?'
     ).bind(500, payload.id).run()
 
     await DB.prepare(
       'INSERT INTO points_history (user_id, amount, type, description) VALUES (?, ?, ?, ?)'
-    ).bind(payload.id, 500, 'referral', '추천인 가입 보너스').run()
+    ).bind(payload.id, 500, 'referral', '추천??가??보너??).run()
 
     // 추천 기록
     await DB.prepare(`
@@ -832,25 +892,25 @@ app.post('/api/referral/apply', async (c) => {
       VALUES (?, ?, ?, ?, ?)
     `).bind(referrer.id, payload.id, referral_code, bonusPoints, 'completed').run()
 
-    return c.json({ 
-      message: '추천인이 등록되었습니다',
+    return c.json({
+      message: '추천?�이 ?�록?�었?�니??,
       bonus_points: 500
     })
   } catch (error) {
-    return c.json({ error: '추천인 등록 실패' }, 500)
+    return c.json({ error: '추천???�록 ?�패' }, 500)
   }
 })
 
-// 내 추천인 목록
+// ??추천??목록
 app.get('/api/referral/list', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    const payload = await verify(token, JWT_SECRET) as any
+    const payload = await verify(token, getJWTSecret(c)) as any as any
 
     const { DB } = c.env
     const { results } = await DB.prepare(`
@@ -863,25 +923,25 @@ app.get('/api/referral/list', async (c) => {
 
     return c.json({ referrals: results })
   } catch (error) {
-    return c.json({ error: '추천인 목록 조회 실패' }, 500)
+    return c.json({ error: '추천??목록 조회 ?�패' }, 500)
   }
 })
 
 // ==================== Shipping Info APIs ====================
 
-// 배송 정보 추가
+// 배송 ?�보 추�?
 app.post('/api/shipping', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
-    const { 
+    const {
       order_id, recipient_name, recipient_phone, postal_code,
       address, address_detail, delivery_request
     } = await c.req.json()
@@ -896,25 +956,25 @@ app.post('/api/shipping', async (c) => {
       address, address_detail || '', delivery_request || '', 'pending'
     ).run()
 
-    return c.json({ 
-      message: '배송 정보가 등록되었습니다',
+    return c.json({
+      message: '배송 ?�보가 ?�록?�었?�니??,
       shipping_id: result.meta.last_row_id
     })
   } catch (error) {
-    return c.json({ error: '배송 정보 등록 실패' }, 500)
+    return c.json({ error: '배송 ?�보 ?�록 ?�패' }, 500)
   }
 })
 
-// 배송 정보 조회
+// 배송 ?�보 조회
 app.get('/api/orders/:id/shipping', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const orderId = c.req.param('id')
@@ -925,23 +985,23 @@ app.get('/api/orders/:id/shipping', async (c) => {
 
     return c.json({ shipping })
   } catch (error) {
-    return c.json({ error: '배송 정보 조회 실패' }, 500)
+    return c.json({ error: '배송 ?�보 조회 ?�패' }, 500)
   }
 })
 
 // ==================== Admin APIs ====================
 
-// 관리자 - 전체 사용자 조회
+// 관리자 - ?�체 ?�용??조회
 app.get('/api/admin/users', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
-    // 간단한 인증 (실제로는 role 기반 인증 필요)
+    // 간단???�증 (?�제로는 role 기반 ?�증 ?�요)
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const { results } = await DB.prepare(
@@ -950,20 +1010,20 @@ app.get('/api/admin/users', async (c) => {
 
     return c.json({ users: results })
   } catch (error) {
-    return c.json({ error: '사용자 목록 조회 실패' }, 500)
+    return c.json({ error: '?�용??목록 조회 ?�패' }, 500)
   }
 })
 
-// 관리자 - 전체 주문 조회
+// 관리자 - ?�체 주문 조회
 app.get('/api/admin/orders', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const { results } = await DB.prepare(`
@@ -976,28 +1036,28 @@ app.get('/api/admin/orders', async (c) => {
 
     return c.json({ orders: results })
   } catch (error) {
-    return c.json({ error: '주문 목록 조회 실패' }, 500)
+    return c.json({ error: '주문 목록 조회 ?�패' }, 500)
   }
 })
 
-// 관리자 - 상품 추가
+// 관리자 - ?�품 추�?
 app.post('/api/admin/products', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
-    const { 
+    const {
       name, description, price, points_rate, stock, category, image_url,
       product_type, supplier, external_url, images, options
     } = await c.req.json()
 
-    // 상품 추가
+    // ?�품 추�?
     const result = await DB.prepare(`
       INSERT INTO products (
         name, description, price, points_rate, stock, category, image_url,
@@ -1010,8 +1070,7 @@ app.post('/api/admin/products', async (c) => {
 
     const productId = result.meta.last_row_id
 
-    // 추가 이미지가 있으면 저장
-    if (images && images.length > 0) {
+    // 추�? ?��?지가 ?�으�??�??    if (images && images.length > 0) {
       for (let i = 0; i < images.length; i++) {
         await DB.prepare(`
           INSERT INTO product_images (product_id, image_url, display_order, is_primary)
@@ -1020,38 +1079,37 @@ app.post('/api/admin/products', async (c) => {
       }
     }
 
-    // 옵션이 있으면 저장
-    if (options && options.length > 0) {
+    // ?�션???�으�??�??    if (options && options.length > 0) {
       for (const option of options) {
         await DB.prepare(`
           INSERT INTO product_options (product_id, option_name, option_value, price_adjustment, stock)
           VALUES (?, ?, ?, ?, ?)
         `).bind(
-          productId, option.name, option.value, 
+          productId, option.name, option.value,
           option.price_adjustment || 0, option.stock || 0
         ).run()
       }
     }
 
-    return c.json({ 
-      message: '상품이 추가되었습니다',
+    return c.json({
+      message: '?�품??추�??�었?�니??,
       id: productId
     })
   } catch (error) {
-    return c.json({ error: '상품 추가 실패' }, 500)
+    return c.json({ error: '?�품 추�? ?�패' }, 500)
   }
 })
 
-// 관리자 - 상품 수정
+// 관리자 - ?�품 ?�정
 app.patch('/api/admin/products/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const id = c.req.param('id')
@@ -1063,55 +1121,54 @@ app.patch('/api/admin/products/:id', async (c) => {
       WHERE id = ?
     `).bind(name, description, price, points_rate, stock, category, image_url, id).run()
 
-    return c.json({ message: '상품이 수정되었습니다' })
+    return c.json({ message: '?�품???�정?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '상품 수정 실패' }, 500)
+    return c.json({ error: '?�품 ?�정 ?�패' }, 500)
   }
 })
 
-// 관리자 - 상품 삭제
+// 관리자 - ?�품 ??��
 app.delete('/api/admin/products/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const id = c.req.param('id')
 
     await DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run()
 
-    return c.json({ message: '상품이 삭제되었습니다' })
+    return c.json({ message: '?�품????��?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '상품 삭제 실패' }, 500)
+    return c.json({ error: '?�품 ??�� ?�패' }, 500)
   }
 })
 
-// 관리자 - 주문 상태 변경
-app.patch('/api/admin/orders/:id/status', async (c) => {
+// 관리자 - 주문 ?�태 변�?app.patch('/api/admin/orders/:id/status', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const orderId = c.req.param('id')
     const { status, tracking_number, carrier } = await c.req.json()
 
-    // 주문 상태 업데이트
+    // 주문 ?�태 ?�데?�트
     await DB.prepare(
       'UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).bind(status, orderId).run()
 
-    // 배송 정보가 있으면 업데이트
+    // 배송 ?�보가 ?�으�??�데?�트
     if (tracking_number || carrier) {
       await DB.prepare(`
         UPDATE shipping_info 
@@ -1120,22 +1177,22 @@ app.patch('/api/admin/orders/:id/status', async (c) => {
       `).bind(tracking_number || '', carrier || '', status, orderId).run()
     }
 
-    return c.json({ message: '주문 상태가 변경되었습니다' })
+    return c.json({ message: '주문 ?�태가 변경되?�습?�다' })
   } catch (error) {
-    return c.json({ error: '주문 상태 변경 실패' }, 500)
+    return c.json({ error: '주문 ?�태 변�??�패' }, 500)
   }
 })
 
-// 관리자 - 매장 추가
+// 관리자 - 매장 추�?
 app.post('/api/admin/stores', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const {
@@ -1155,24 +1212,24 @@ app.post('/api/admin/stores', async (c) => {
     ).run()
 
     return c.json({
-      message: '매장이 추가되었습니다',
+      message: '매장??추�??�었?�니??,
       id: result.meta.last_row_id
     })
   } catch (error) {
-    return c.json({ error: '매장 추가 실패' }, 500)
+    return c.json({ error: '매장 추�? ?�패' }, 500)
   }
 })
 
-// 관리자 - 매장 수정
+// 관리자 - 매장 ?�정
 app.patch('/api/admin/stores/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const id = c.req.param('id')
@@ -1192,37 +1249,37 @@ app.patch('/api/admin/stores/:id', async (c) => {
       distance, discount_rate, points_rate, image_url, id
     ).run()
 
-    return c.json({ message: '매장이 수정되었습니다' })
+    return c.json({ message: '매장???�정?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '매장 수정 실패' }, 500)
+    return c.json({ error: '매장 ?�정 ?�패' }, 500)
   }
 })
 
-// 관리자 - 매장 삭제
+// 관리자 - 매장 ??��
 app.delete('/api/admin/stores/:id', async (c) => {
   try {
     const authHeader = c.req.header('Authorization')
     if (!authHeader) {
-      return c.json({ error: '인증이 필요합니다' }, 401)
+      return c.json({ error: '?�증???�요?�니?? }, 401)
     }
 
     const token = authHeader.substring(7)
-    await verify(token, JWT_SECRET)
+    await verify(token, getJWTSecret(c)) as any
 
     const { DB } = c.env
     const id = c.req.param('id')
 
     await DB.prepare('DELETE FROM stores WHERE id = ?').bind(id).run()
 
-    return c.json({ message: '매장이 삭제되었습니다' })
+    return c.json({ message: '매장????��?�었?�니?? })
   } catch (error) {
-    return c.json({ error: '매장 삭제 실패' }, 500)
+    return c.json({ error: '매장 ??�� ?�패' }, 500)
   }
 })
 
-// Catch-all: 나머지 경로는 Pages에서 처리하도록 통과
+// Catch-all: ?�머지 경로??Pages?�서 처리?�도�??�과
 app.all('*', () => {
-  // 404를 반환하면 Pages가 static 파일을 찾음
+  // 404�?반환?�면 Pages가 static ?�일??찾음
   return new Response(null, { status: 404 })
 })
 
