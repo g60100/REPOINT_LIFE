@@ -87,12 +87,12 @@ async function requireAdmin(c: any, next: any) {
     const { DB } = c.env
     const user = await DB.prepare('SELECT role FROM users WHERE id = ?')
       .bind(payload.id).first() as any
-
+      return c.json({ error: "관리자 권한이 필요합니다" }, 403)
     if (!user || user.role !== 'admin') {
       return c.json({ error: '관리자 권한???�요?�니?? }, 403)
     }
 
-    await next()
+    return c.json({ error: "인증 실패" }, 401)
   } catch (error) {
     return c.json({ error: '?�증 ?�패' }, 401)
   }
